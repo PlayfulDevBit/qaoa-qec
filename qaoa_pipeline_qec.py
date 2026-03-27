@@ -822,20 +822,6 @@ def qaoa_maxcut_pipeline(
     print(f"  QEC             : {'enabled — Surface Code d=3 on RTH' if enable_qec else 'disabled'}")
     print(f"{'━' * 64}\n")
 
-    # ── PHASE 0: QEC RTH preparation ─────────────────────────────────
-    # This phase MUST complete before any job touches the Control Station.
-    # The RTH syndrome listener then runs for the entire experiment.
-    container_id = None
-    if enable_qec:
-        print("▸ PHASE 0: Preparing RTH — Surface Code d=3 (BEFORE job submission)")
-        rth_ok      = qec_check_rth_connectivity()
-        container_id = qec_spin_up_container(wait_for=[rth_ok])
-        decoder_info = qec_load_decoder(container_id, wait_for=[container_id])
-        qec_armed    = qec_arm_syndrome_listener(decoder_info, wait_for=[decoder_info])
-        print("▸ PHASE 0 complete — RTH armed. Proceeding to circuit preparation.")
-    else:
-        print("▸ PHASE 0: QEC disabled — skipping RTH preparation.")
-
     # ── STAGE 1: Problem setup ────────────────────────────────────────
     print("\n▸ STAGE 1: Problem Setup")
     problem = setup_problem(n_iterations)
@@ -848,10 +834,32 @@ def qaoa_maxcut_pipeline(
     print("\n▸ STAGE 3: Transpile for IQM Garnet")
     transpile_data = transpile_qaoa(circuit_data, problem, enable_qec)
 
+    # ── STAGE 3.5: Submit to Control Station, await acceptance ────────
+    # RTH prep must NOT start before this confirmation — no point warming
+    # RTH for a job the Control Station might reject.
+    print("\n▸ STAGE 3.5: Submit job — awaiting Control Station acceptance")
+    job_id = submit_and_await_acceptance(transpile_data, enable_qec)
+
+    # ── PHASE 0: QEC RTH preparation ─────────────────────────────────
+    # Starts only after Control Station has confirmed job acceptance.
+    # RTH time is as valuable as QPU time — we don't start it earlier.
+    # Control Station holds QPU execution until RTH armed signal arrives.
+    # If any RTH task fails, Prefect raises and aborts the pipeline.
+    container_id = None
+    if enable_qec:
+        print("\n▸ PHASE 0: Preparing RTH — Surface Code d=3 (job accepted, RTH prep starting now)")
+        rth_ok       = qec_check_rth_connectivity(wait_for=[job_id])
+        container_id = qec_spin_up_container(wait_for=[rth_ok])
+        decoder_info = qec_load_decoder(container_id, wait_for=[container_id])
+        qec_armed    = qec_arm_syndrome_listener(decoder_info, wait_for=[decoder_info])
+        print("▸ PHASE 0 complete — RTH armed. Signalling Control Station to release QPU execution.")
+    else:
+        print("\n▸ PHASE 0: QEC disabled — skipping RTH preparation.")
+
     # ── STAGE 4: QPU execution ────────────────────────────────────────
-    # Job is only submitted AFTER QEC RTH is armed (Phase 0 complete above)
+    # Control Station releases QPU execution only after RTH armed signal.
     print("\n▸ STAGE 4: QAOA Optimisation Loop on QPU")
-    qaoa_result = run_qaoa_optimisation(problem, transpile_data, enable_qec, shots)
+    qaoa_result = run_qaoa_optimisation(problem, transpile_data, job_id, enable_qec, shots)
 
     # ── STAGE 5: REM ──────────────────────────────────────────────────
     rem_result = None
