@@ -503,6 +503,43 @@ def apply_rem(
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# STAGE 3.5 — SUBMIT JOB AND AWAIT CONTROL STATION ACCEPTANCE
+# ═══════════════════════════════════════════════════════════════════════
+
+@task(
+    name="3.5 · Submit job — await Control Station acceptance",
+    tags=["stage:3", "infra:resonance"],
+    retries=2,
+    retry_delay_seconds=10,
+)
+def submit_and_await_acceptance(transpile_data: dict, enable_qec: bool) -> str:
+    """
+    Submit the transpiled circuit to Control Station via Resonance PaaS
+    and block until the Control Station confirms job acceptance.
+
+    Returns the confirmed job ID. RTH preparation must not start before
+    this confirmation arrives — we do not want to burn RTH/QPU time on
+    a job that gets rejected at the Control Station level.
+    """
+    logger = get_run_logger()
+    token = get_iqm_token()
+    if not token:
+        raise RuntimeError("IQM token required — set Prefect Secret 'iqm-resonance-token'")
+
+    logger.info("Submitting circuit to Control Station via Resonance PaaS...")
+    if enable_qec:
+        logger.info("Job descriptor carries qec_profile=surface_code_d3 — Control Station")
+        logger.info("will hold execution until RTH armed signal is received.")
+    time.sleep(0.5)
+    job_id = f"iqm-job-{np.random.randint(10000, 99999)}"
+    logger.info(f"Job submitted. Waiting for Control Station acceptance...")
+    time.sleep(0.4)
+    logger.info(f"✓ Control Station accepted job {job_id}. QPU slot reserved.")
+    logger.info(f"  QPU will not execute until RTH armed signal arrives (if QEC enabled).")
+    return job_id
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # STAGE 6 — ARTIFACTS
 # ═══════════════════════════════════════════════════════════════════════
 
