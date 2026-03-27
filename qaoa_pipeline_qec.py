@@ -356,6 +356,7 @@ def transpile_qaoa(circuit_data: dict, problem: dict, enable_qec: bool) -> dict:
 def run_qaoa_optimisation(
     problem: dict,
     transpile_data: dict,
+    job_id: str,
     enable_qec: bool,
     shots: int = 1024,
 ) -> dict:
