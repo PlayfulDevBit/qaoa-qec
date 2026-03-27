@@ -16,7 +16,7 @@ Usage:
 """
 
 from prefect.runner.storage import GitRepository
-from qaoa_maxcut_pipeline import qaoa_maxcut_pipeline
+from qaoa_pipeline_qec import qaoa_maxcut_pipeline
 
 # ── CONFIGURE THIS ──────────────────────────────────────────────────────
 WORK_POOL_NAME = "my-managed-pool"   # ← replace with your work pool name
@@ -29,7 +29,7 @@ if __name__ == "__main__":
             url=GITHUB_URL,
             branch="main",
         ),
-        entrypoint="qaoa_maxcut_pipeline.py:qaoa_maxcut_pipeline",
+        entrypoint="qaoa_pipeline_qec.py:qaoa_maxcut_pipeline",
     )
 
     deployment_id = deployment.deploy(
